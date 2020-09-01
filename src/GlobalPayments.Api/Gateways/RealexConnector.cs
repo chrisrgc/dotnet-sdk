@@ -141,6 +141,23 @@ namespace GlobalPayments.Api.Gateways {
             }
             #endregion
 
+            #region COMMENTS
+            if (builder.Comment1 != null || builder.Comment2 != null)
+            {
+                var comments = et.SubElement(request, "comments");
+
+                if (builder.Comment1 != null)
+                {
+                    et.SubElement(comments, "comment", builder.Comment1).Set("id", "1");
+                }
+
+                if (builder.Comment2 != null)
+                {
+                    et.SubElement(comments, "comment", builder.Comment2).Set("id", "2");
+                }
+            }
+            #endregion
+
             #region CUSTOM DATA
             if (builder.CustomData != null) {
                 var custom = et.SubElement(request, "custom");

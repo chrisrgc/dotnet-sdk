@@ -83,6 +83,102 @@ namespace GlobalPayments.Api.Tests {
         }
 
         [TestMethod]
+        public void CreditSaleWithNullComments()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments(null, null)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithComment1()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments("Comment1", null)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithComment2()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments(null, "Comment2")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithBothComments()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments("Comment1", "Comment2")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithBrackets()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments("<", ">")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithSlashes()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments(@"/", @"\")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithQuotes()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments("\"", "'")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithClosingTag()
+        {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithComments("</comment>", "</request>")
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode, response.ResponseMessage);
+        }
+
+        [TestMethod]
         public void CreditSaleWithRecurring() {
             var response = card.Charge(15m)
                 .WithCurrency("USD")

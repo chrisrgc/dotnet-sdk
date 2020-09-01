@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using GlobalPayments.Api.Entities;
 using GlobalPayments.Api.PaymentMethods;
 
@@ -58,6 +59,9 @@ namespace GlobalPayments.Api.Builders {
         internal Dictionary<string, List<string[]>> SupplementaryData { get; set; }
         internal string TagData { get; set; }
         internal string Timestamp { get; set; }
+
+        internal string Comment1 { get; set; }
+        internal string Comment2 { get; set; }
 
         /// <summary>
         /// Indicates the type of account provided; see the associated Type enumerations for specific values supported.
@@ -154,7 +158,7 @@ namespace GlobalPayments.Api.Builders {
         /// </summary>
         /// <returns>AuthorizationBuilder</returns>
         public AuthorizationBuilder WithMultiCapture(bool value) {
-           MultiCapture = value;
+            MultiCapture = value;
             return this;
         }
 
@@ -606,7 +610,16 @@ namespace GlobalPayments.Api.Builders {
             return this;
         }
 
-        internal AuthorizationBuilder WithModifier(TransactionModifier value) {
+        public AuthorizationBuilder WithComments(string comment1, string comment2)
+        {
+            Comment1 = comment1;
+            Comment2 = comment2;
+
+            return this;
+        }
+
+        internal AuthorizationBuilder WithModifier(TransactionModifier value)
+        {
             TransactionModifier = value;
             return this;
         }
