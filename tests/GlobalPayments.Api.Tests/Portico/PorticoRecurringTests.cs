@@ -21,9 +21,8 @@ namespace GlobalPayments.Api.Tests.Portico {
         }
 
         public PorticoRecurringTests() {
-            ServicesContainer.ConfigureService(new GatewayConfig {
-                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A",
-                ServiceUrl = "https://cert.api2.heartlandportico.com"
+            ServicesContainer.ConfigureService(new PorticoConfig {
+                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A"
             });
         }
 
@@ -387,6 +386,36 @@ namespace GlobalPayments.Api.Tests.Portico {
         }
 
         [TestMethod]
+        public void Test_007b_CreditCharge_ScheduleIdWithCOF() {
+            RecurringPaymentMethod paymentMethod = RecurringPaymentMethod.Find(PaymentId("Credit"));
+            Assert.IsNotNull(paymentMethod);
+
+            Schedule schedule = Schedule.Find(PaymentId("Credit"));
+            Assert.IsNotNull(schedule);
+
+            Transaction response = paymentMethod.Charge(19m)
+                    .WithCurrency("USD")
+                    .WithScheduleId(schedule.Key)
+                    .WithAllowDuplicates(true)
+                    .WithOneTimePayment(false)
+                    .WithCardBrandStorage(StoredCredentialInitiator.CardHolder)
+                    .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode);
+            Assert.IsNotNull(response.CardBrandTransactionId);
+
+            Transaction nextResponse = paymentMethod.Charge(15m)
+                    .WithCurrency("USD")
+                    .WithScheduleId(schedule.Key)
+                    .WithAllowDuplicates(true)
+                    .WithOneTimePayment(false)
+                    .WithCardBrandStorage(StoredCredentialInitiator.Merchant, response.CardBrandTransactionId)
+                    .Execute();
+            Assert.IsNotNull(nextResponse);
+            Assert.AreEqual("00", nextResponse.ResponseCode);
+        }
+
+        [TestMethod]
         public void Test_007c_ACHCharge_OneTime() {
             var paymentMethod = RecurringPaymentMethod.Find(PaymentId("ACH"));
             Assert.IsNotNull(paymentMethod, "Payment method missing.");
@@ -472,10 +501,8 @@ namespace GlobalPayments.Api.Tests.Portico {
 
         [TestMethod]
         public void Test_008g_CreditCharge_WithNewCryptoURL() {
-            ServicesContainer.ConfigureService(new GatewayConfig
-            {
-                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A",
-                ServiceUrl = "https://cert.api2-c.heartlandportico.com"
+            ServicesContainer.ConfigureService(new PorticoConfig {
+                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A"
             });
             var paymentMethod = RecurringPaymentMethod.Find(PaymentId("Credit"));
             Assert.IsNotNull(paymentMethod);

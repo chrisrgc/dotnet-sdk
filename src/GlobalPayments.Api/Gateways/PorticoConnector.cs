@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using GlobalPayments.Api.Builders;
@@ -38,7 +38,7 @@ namespace GlobalPayments.Api.Gateways {
             }
             et.SubElement(block1, "Amt", builder.Amount);
             et.SubElement(block1, "GratuityAmtInfo", builder.Gratuity);
-            et.SubElement(block1, "ConvenienceAmtInfo", builder.ConvenienceAmt);
+            et.SubElement(block1, "ConvenienceAmtInfo", builder.ConvenienceAmount);
             et.SubElement(block1, "ShippingAmtInfo", builder.ShippingAmt);
             // because plano...
             et.SubElement(block1, builder.PaymentMethod.PaymentMethodType == PaymentMethodType.Debit ? "CashbackAmtInfo" : "CashBackAmount", builder.CashBackAmount);
@@ -53,8 +53,10 @@ namespace GlobalPayments.Api.Gateways {
             }
 
             #region card holder
-            var isCheck = (builder.PaymentMethod.PaymentMethodType == PaymentMethodType.ACH);
-            if (isCheck || builder.BillingAddress != null) {
+            if (builder.PaymentMethod.PaymentMethodType != PaymentMethodType.Recurring
+                && builder.PaymentMethod.PaymentMethodType != PaymentMethodType.Gift
+            ) {
+                var isCheck = (builder.PaymentMethod.PaymentMethodType == PaymentMethodType.ACH);
                 var holder = et.SubElement(block1, isCheck ? "ConsumerInfo" : "CardHolderData");
 
                 if (builder.BillingAddress != null) {
@@ -82,10 +84,16 @@ namespace GlobalPayments.Api.Gateways {
                         et.SubElement(identity, "DOBYear", check.BirthYear);
                     }
                 }
-                else {
-                    // TODO: card holder name
+                else{
+                    var card = builder.PaymentMethod as CreditCardData;
+                    if (card != null && !string.IsNullOrEmpty(card.CardHolderName)) {
+                        var names = card.CardHolderName.Split(new char[] {' '}, 2);
+                        et.SubElement(holder, "CardHolderFirstName", names[0]);
+                        et.SubElement(holder, "CardHolderLastName", names[1]);
+                    }
                 }
             }
+
             #endregion
 
             // card data
@@ -101,6 +109,13 @@ namespace GlobalPayments.Api.Gateways {
             #region ICardData
             if (builder.PaymentMethod is ICardData) {
                 var card = builder.PaymentMethod as ICardData;
+
+                //credential on file
+                if (builder.TransactionInitiator != null) {
+                    Element cardOnFileData = et.SubElement(block1, "CardOnFileData");
+                    et.SubElement(cardOnFileData, "CardOnFile", EnumConverter.GetMapping(Target.Portico, builder.TransactionInitiator));
+                    et.SubElement(cardOnFileData, "CardBrandTxnId", builder.CardBrandTransactionId);
+                }
 
                 var manualEntry = et.SubElement(cardData, hasToken ? "TokenData" : "ManualEntry");
                 et.SubElement(manualEntry, hasToken ? "TokenValue" : "CardNbr").Text(tokenValue ?? card.Number);
@@ -122,7 +137,7 @@ namespace GlobalPayments.Api.Gateways {
                         et.SubElement(secureEcommerce, "ECommerceIndicator", secureEcom.Eci);
                         et.SubElement(secureEcommerce, "XID", secureEcom.Xid);
                     }
-                }                
+                }
 
                 // recurring data
                 if (builder.TransactionModifier == TransactionModifier.Recurring) {
@@ -148,12 +163,8 @@ namespace GlobalPayments.Api.Gateways {
                         }
                     }
                     if (builder.PaymentMethod.PaymentMethodType == PaymentMethodType.Debit) {
-                        string chipCondition = null;
-                        if (builder.ChipCondition != null)
-                            chipCondition = builder.ChipCondition == EmvChipCondition.ChipFailedPreviousSuccess ? "CHIP_FAILED_PREV_SUCCESS" : "CHIP_FAILED_PREV_FAILED";
-
                         et.SubElement(block1, "AccountType", builder.AccountType?.ToString() ?? null);
-                        et.SubElement(block1, "EMVChipCondition", chipCondition);
+                        et.SubElement(block1, "EMVChipCondition", EnumConverter.GetMapping(Target.Portico, builder.EmvLastChipRead));
                         et.SubElement(block1, "MessageAuthenticationCode", builder.MessageAuthenticationCode);
                         et.SubElement(block1, "PosSequenceNbr", builder.PosSequenceNumber);
                         et.SubElement(block1, "ReversalResonCode", builder.ReversalReasonCode);
@@ -196,17 +207,17 @@ namespace GlobalPayments.Api.Gateways {
                 // check action
                 et.SubElement(block1, "CheckAction").Text("SALE");
 
+                var accountInfo = et.SubElement(block1, "AccountInfo");
                 // account info
                 if (string.IsNullOrEmpty(check.Token)) {
-                    var accountInfo = et.SubElement(block1, "AccountInfo");
                     et.SubElement(accountInfo, "RoutingNumber", check.RoutingNumber);
                     et.SubElement(accountInfo, "AccountNumber", check.AccountNumber);
                     et.SubElement(accountInfo, "CheckNumber", check.CheckNumber);
                     et.SubElement(accountInfo, "MICRData", check.MicrNumber);
-                    et.SubElement(accountInfo, "AccountType", check.AccountType.ToString());
                 }
                 else et.SubElement(block1, "TokenValue").Text(tokenValue);
 
+                et.SubElement(accountInfo, "AccountType", check.AccountType.ToString());
                 et.SubElement(block1, "DataEntryMode", check.EntryMode.ToString().ToUpper());
                 et.SubElement(block1, "CheckType", check.CheckType.ToString());
                 et.SubElement(block1, "SECCode", check.SecCode);
@@ -227,6 +238,12 @@ namespace GlobalPayments.Api.Gateways {
             #region RecurringPaymentMethod
             if (builder.PaymentMethod is RecurringPaymentMethod) {
                 var method = builder.PaymentMethod as RecurringPaymentMethod;
+                //credential on file
+                if (builder.TransactionInitiator != null) {
+                    Element cardOnFileData = et.SubElement(block1, "CardOnFileData");
+                    et.SubElement(cardOnFileData, "CardOnFile", EnumConverter.GetMapping(Target.Portico, builder.TransactionInitiator));
+                    et.SubElement(cardOnFileData, "CardBrandTxnId", builder.CardBrandTransactionId);
+                }
 
                 // check action
                 if (method.PaymentType == "ACH") {
@@ -280,8 +297,9 @@ namespace GlobalPayments.Api.Gateways {
                 et.SubElement(block1, "BalanceInquiryType", builder.BalanceInquiryType);
 
             // cpc request
-            if (builder.Level2Request)
+            if (builder.CommercialRequest) {
                 et.SubElement(block1, "CPCReq", "Y");
+            }
 
             // details
             if (!string.IsNullOrEmpty(builder.CustomerId) || !string.IsNullOrEmpty(builder.Description) || !string.IsNullOrEmpty(builder.InvoiceNumber)) {
@@ -319,13 +337,44 @@ namespace GlobalPayments.Api.Gateways {
 
                         var amountNode = et.SubElement(autoSub, fieldNames[index++] + "AdditionalAmtInfo");
                         et.SubElement(amountNode, "AmtType", amount.Key);
-                        et.SubElement(amountNode, "Amt", amount.Value.ToNumericString());
+                        et.SubElement(amountNode, "Amt", amount.Value?.ToString());
                     }
                 }
 
                 et.SubElement(autoSub, "MerchantVerificationValue", builder.AutoSubstantiation.MerchantVerificationValue);
                 et.SubElement(autoSub, "RealTimeSubstantiation", builder.AutoSubstantiation.RealTimeSubstantiation ? "Y" : "N");
             }
+
+            #region LodgingData
+            if (builder.LodgingData != null) {
+                var lodging = builder.LodgingData;
+
+                Element lodgingElement = et.SubElement(block1, "LodgingData");
+                et.SubElement(lodgingElement, "PrestigiousPropertyLimit", lodging.PrestigiousPropertyLimit);
+                et.SubElement(lodgingElement, "NoShow", lodging.NoShow ? "Y" : "N");
+                et.SubElement(lodgingElement, "AdvancedDepositType", lodging.AdvancedDepositType);
+                et.SubElement(lodgingElement, "PreferredCustomer", lodging.PreferredCustomer ? "Y" : "N");
+
+                if ((!string.IsNullOrEmpty(lodging.FolioNumber)) || (lodging.StayDuration != default(int)) || (lodging.CheckInDate != null) || (lodging.CheckOutDate != null) ||
+                    (lodging.Rate != default(decimal)) || (lodging.ExtraCharges != null)) {
+                    Element lodgingDataEdit = et.SubElement(lodgingElement, "LodgingDataEdit");
+                    et.SubElement(lodgingDataEdit, "FolioNumber", lodging.FolioNumber);
+                    et.SubElement(lodgingDataEdit, "Duration", lodging.StayDuration);
+                    et.SubElement(lodgingDataEdit, "CheckInDate", lodging.CheckInDate?.ToString("yyyy-MM-dd"));
+                    et.SubElement(lodgingDataEdit, "CheckOutDate", lodging.CheckOutDate?.ToString("yyyy-MM-dd"));
+                    et.SubElement(lodgingDataEdit, "Rate", lodging.Rate);
+
+                    if (lodging.ExtraCharges != null) {
+                        Element extraChargesElement = et.SubElement(lodgingDataEdit, "ExtraCharges");
+
+                        foreach (var chargeType in lodging.ExtraCharges.Keys) {
+                            et.SubElement(extraChargesElement, chargeType.ToString(), "Y");
+                        }
+                        et.SubElement(lodgingDataEdit, "ExtraChargeAmtInfo", lodging.ExtraChargeAmount);
+                    }
+                }
+            }
+            #endregion
 
             var response = DoTransaction(BuildEnvelope(et, transaction, builder.ClientTransactionId));
             return MapResponse(response, builder.PaymentMethod);
@@ -345,6 +394,7 @@ namespace GlobalPayments.Api.Gateways {
                 Element root = null;
                 if (builder.TransactionType == TransactionType.Reversal
                     || builder.TransactionType == TransactionType.Refund
+                    || builder.TransactionType == TransactionType.Increment
                     || builder.PaymentMethod.PaymentMethodType == PaymentMethodType.Gift
                     || builder.PaymentMethod.PaymentMethodType == PaymentMethodType.ACH) {
                     root = et.SubElement(transaction, "Block1");
@@ -374,12 +424,30 @@ namespace GlobalPayments.Api.Gateways {
                     et.SubElement(root, "ClientTxnId", builder.ClientTransactionId);
                 }
 
+                if (builder.AllowDuplicates) {
+                    et.SubElement(root, "AllowDup", "Y");
+                }
+
                 // Level II Data
-                if (builder.TransactionType == TransactionType.Edit && builder.TransactionModifier == TransactionModifier.LevelII) {
+                if (builder.CommercialData != null) {
                     var cpc = et.SubElement(root, "CPCData");
-                    et.SubElement(cpc, "CardHolderPONbr", builder.PoNumber);
-                    et.SubElement(cpc, "TaxType", builder.TaxType.ToString());
-                    et.SubElement(cpc, "TaxAmt", builder.TaxAmount);
+                    et.SubElement(cpc, "CardHolderPONbr", builder.CommercialData.PoNumber);
+                    et.SubElement(cpc, "TaxType", builder.CommercialData.TaxType.ToString());
+                    et.SubElement(cpc, "TaxAmt", builder.CommercialData.TaxAmount);
+                }
+
+                // Lodging Data
+                if (builder.LodgingData != null) {
+                    LodgingData lodging = builder.LodgingData;
+
+                    if (lodging.ExtraCharges != null) {
+                        Element lodgingDataEdit = et.SubElement(root, "LodgingDataEdit");
+                        Element extraChargesElement = et.SubElement(lodgingDataEdit, "ExtraCharges");
+                        foreach (var chargeType in lodging.ExtraCharges.Keys) {
+                            et.SubElement(extraChargesElement, chargeType.ToString(), "Y");
+                        }
+                        et.SubElement(lodgingDataEdit, "ExtraChargeAmtInfo", lodging.ExtraChargeAmount);
+                    }
                 }
 
                 // Additional Txn Fields
@@ -528,7 +596,7 @@ namespace GlobalPayments.Api.Gateways {
                 );
             }
             else {
-                result.AuthorizedAmount = root.GetValue<decimal>("AuthAmt");
+                result.AuthorizedAmount = root.GetValue<decimal>("SplitTenderCardAmt", "AuthAmt");
                 result.AvailableBalance = root.GetValue<decimal>("AvailableBalance");
                 result.AvsResponseCode = root.GetValue<string>("AVSRsltCode");
                 result.AvsResponseMessage = root.GetValue<string>("AVSRsltText");
@@ -543,6 +611,7 @@ namespace GlobalPayments.Api.Gateways {
                 result.PointsBalanceAmount = root.GetValue<decimal>("PointsBalanceAmt");
                 result.RecurringDataCode = root.GetValue<string>("RecurringDataCode");
                 result.ReferenceNumber = root.GetValue<string>("RefNbr");
+                result.CardBrandTransactionId = root.GetValue<string>("CardBrandTxnId");
                 result.ResponseCode = NormalizeResponse(root.GetValue<string>("RspCode")) ?? gatewayRspCode;
                 result.ResponseMessage = root.GetValue<string>("RspText", "RspMessage") ?? gatewayRspText;
                 result.TransactionDescriptor = root.GetValue<string>("TxnDescriptor");
@@ -554,7 +623,7 @@ namespace GlobalPayments.Api.Gateways {
                         AuthCode = root.GetValue<string>("AuthCode")
                     };
                 }
-                
+
                 // gift card create data
                 if (root.Has("CardData")) {
                     result.GiftCard = new GiftCard {
@@ -617,7 +686,7 @@ namespace GlobalPayments.Api.Gateways {
             if (reportType.HasFlag(ReportType.FindTransactions) | reportType.HasFlag(ReportType.Activity) | reportType.HasFlag(ReportType.TransactionDetail)) {
                 Func<Element, TransactionSummary> hydrateTransactionSummary = (root) => {
                     var summary = new TransactionSummary {
-                        AccountDataSource = root.GetValue<string>("AccDataSrc"),
+                        AccountDataSource = root.GetValue<string>("AcctDataSrc"),
                         Amount = root.GetValue<decimal>("Amt"),
                         AuthorizedAmount = root.GetValue<decimal>("AuthAmt"),
                         AuthCode = root.GetValue<string>("AuthCode"),
@@ -681,13 +750,13 @@ namespace GlobalPayments.Api.Gateways {
                     };
 
                     // card holder data
-                    
+
                     // lodging data
                     if (root.Has("LodgingData")) {
                         summary.LodgingData = new LodgingData {
-                            PrestigiousPropertyLimit = root.GetValue<string>("PrestigiousPropertyLimit"),
+                            PrestigiousPropertyLimit = root.GetValue<PrestigiousPropertyLimit>("PrestigiousPropertyLimit"),
                             NoShow = root.GetValue<bool>("NoShow"),
-                            AdvancedDepositType = root.GetValue<string>("AdvancedDepositType"),
+                            AdvancedDepositType = root.GetValue<AdvancedDepositType>("AdvancedDepositType"),
                             LodgingDataEdit = root.GetValue<string>("LodgingDataEdit"),
                             PreferredCustomer = root.GetValue<bool>("PReferredCustomer"),
                         };
@@ -853,7 +922,7 @@ namespace GlobalPayments.Api.Gateways {
                         throw new UnsupportedTransactionException();
                     }
                 case TransactionType.Edit: {
-                        if (builder.TransactionModifier.HasFlag(TransactionModifier.LevelII))
+                        if (builder.TransactionModifier.HasFlag(TransactionModifier.Level_II))
                             return "CreditCPCEdit"; // CreditCPCEdit : Edit (Level II)
                         else return "CreditTxnEdit";  // CreditTxnEdit : Edit (Credit)
                     }
@@ -896,6 +965,8 @@ namespace GlobalPayments.Api.Gateways {
                     return "GiftCardReplace"; // GiftCardReplace : Replace
                 case TransactionType.Reward:
                     return "GiftCardReward"; // GiftCardReward : Reward
+                case TransactionType.Increment:
+                    return "CreditIncrementalAuth";
                 case TransactionType.TokenDelete:
                 case TransactionType.TokenUpdate:
                     return "ManageTokens";
@@ -944,6 +1015,11 @@ namespace GlobalPayments.Api.Gateways {
 
             if (paymentMethod is ITokenizable && !string.IsNullOrEmpty(((ITokenizable)paymentMethod).Token)) {
                 tokenValue = ((ITokenizable)paymentMethod).Token;
+                return true;
+            }
+
+            if (paymentMethod is eCheck && !string.IsNullOrEmpty(((eCheck)paymentMethod).Token)) {
+                tokenValue = ((eCheck)paymentMethod).Token;
                 return true;
             }
             return false;

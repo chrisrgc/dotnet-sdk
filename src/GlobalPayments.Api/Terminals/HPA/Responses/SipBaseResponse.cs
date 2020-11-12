@@ -32,7 +32,7 @@ namespace GlobalPayments.Api.Terminals.HPA.Responses {
                 var root = ElementTree.Parse(message).Get("SIP");
                 Command = root.GetValue<string>("Response");
                 if (Command != null && !messageIds.ToList().Contains(Command)) {
-                    throw new MessageException("Excpected {0} but recieved {1}".FormatWith(string.Join(", ", messageIds), Command));
+                    throw new MessageException("Expected {0} but recieved {1}".FormatWith(string.Join(", ", messageIds), Command));
                 }
 
                 Version = root.GetValue<string>("Version");
@@ -248,6 +248,8 @@ namespace GlobalPayments.Api.Terminals.HPA.Responses {
         /// The results of the terminals attempt to verify the cards authenticity.
         /// </summary>
         public string TerminalVerificationResults { get; set; }
+
+        public decimal? MerchantFee { get; set; }
 
         internal SipTerminalResponse(byte[] buffer, params string[] messageIds) : base(buffer, messageIds) { }
     }

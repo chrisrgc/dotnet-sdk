@@ -11,8 +11,9 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
         public PaxDebitTests() {
             _device = DeviceService.Create(new ConnectionConfig {
                 DeviceType = DeviceType.PAX_S300,
-                ConnectionMode = ConnectionModes.HTTP,
-                IpAddress = "192.168.0.31",
+                ConnectionMode = ConnectionModes.TCP_IP,
+                IpAddress = "10.12.220.172",
+                //IpAddress = "192.168.0.31",
                 Port = "10009",
                 RequestIdProvider = new RandomIdProvider()
             });
@@ -26,7 +27,8 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
                 //Assert.IsTrue(message.StartsWith("[STX]T02[FS]1.35[FS]01[FS]1000[FS][US][US][US][US][US]1[FS]5[FS][FS][ETX]"));
             };
 
-            var response = _device.DebitSale(10m)
+            var response = _device.Sale(10m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
                 .WithAllowDuplicates(true)
                 .Execute();
             Assert.IsNotNull(response);
@@ -35,7 +37,9 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
 
         [TestMethod, ExpectedException(typeof(BuilderException))]
         public void DebitSaleNoAmount() {
-            _device.DebitSale(5).Execute();
+            _device.Sale(5m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
+                .Execute();
         }
 
         [TestMethod]
@@ -45,14 +49,17 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
                 //Assert.IsTrue(message.StartsWith("[STX]T02[FS]1.35[FS]02[FS]1000[FS][FS]6[FS][FS][ETX]"));
             };
 
-            var response = _device.DebitRefund(10m).Execute();
+            var response = _device.Refund(10m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
+                .Execute();
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode, response.DeviceResponseText);
         }
 
         [TestMethod]
         public void DebitRefundByTransactionId() {
-            var response = _device.DebitSale(10m)
+            var response = _device.Sale(10m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
                 .WithAllowDuplicates(true)
                 .Execute();
             Assert.IsNotNull(response);
@@ -64,7 +71,8 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
                 //Assert.IsTrue(message.StartsWith("[STX]T02[FS]1.35[FS]02[FS]1000[FS][FS]5[FS][FS]HREF=" + transactionId + "[ETX]"));
             };
 
-            var response2 = _device.DebitRefund(10m)
+            var response2 = _device.Refund(10m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
                 .WithTransactionId(transactionId)
                 .Execute();
             Assert.IsNotNull(response2);
@@ -73,7 +81,9 @@ namespace GlobalPayments.Api.Tests.Terminals.Pax {
 
         [TestMethod, ExpectedException(typeof(BuilderException))]
         public void DebitRefund_NoAmount() {
-            _device.DebitRefund(5).Execute();
+            _device.Refund(5m)
+                .WithPaymentMethodType(PaymentMethodType.Debit)
+                .Execute();
         }
     }
 }

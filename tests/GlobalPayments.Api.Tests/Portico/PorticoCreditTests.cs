@@ -12,9 +12,8 @@ namespace GlobalPayments.Api.Tests {
 
         [TestInitialize]
         public void Init() {
-            ServicesContainer.ConfigureService(new GatewayConfig {
-                SecretApiKey = "skapi_cert_MTeSAQAfG1UA9qQDrzl-kz4toXvARyieptFwSKP24w",
-                ServiceUrl = "https://cert.api2.heartlandportico.com"
+            ServicesContainer.ConfigureService(new PorticoConfig {
+                SecretApiKey = "skapi_cert_MTeSAQAfG1UA9qQDrzl-kz4toXvARyieptFwSKP24w"
             });
 
             card = new CreditCardData {
@@ -51,7 +50,7 @@ namespace GlobalPayments.Api.Tests {
             var response = card.Authorize(14m)
                 .WithCurrency("USD")
                 .WithAllowDuplicates(true)
-                .WithConvenienceAmt(2m)
+                .WithConvenienceAmount(2m)
                 .Execute();
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode);
@@ -75,6 +74,33 @@ namespace GlobalPayments.Api.Tests {
         }
 
         [TestMethod]
+        public void CreditAuthorizationWithCOF()
+        {
+            Transaction response = card.Authorize(14m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithCardBrandStorage(StoredCredentialInitiator.Merchant)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode);
+            Assert.IsNotNull(response.CardBrandTransactionId);
+
+            Transaction cofResponse = card.Authorize(14m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .WithCardBrandStorage(StoredCredentialInitiator.CardHolder, response.CardBrandTransactionId)
+                .Execute();
+            Assert.IsNotNull(cofResponse);
+            Assert.AreEqual("00", cofResponse.ResponseCode);
+
+            Transaction capture = cofResponse.Capture(16m)
+                .WithGratuity(2m)
+                .Execute();
+            Assert.IsNotNull(capture);
+            Assert.AreEqual("00", capture.ResponseCode);
+        }
+
+        [TestMethod]
         public void CreditSale() {
             var response = card.Charge(15m)
                 .WithCurrency("USD")
@@ -85,11 +111,67 @@ namespace GlobalPayments.Api.Tests {
         }
 
         [TestMethod]
+        public void CreditSaleWithRefund() {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode);
+
+            var trans = Transaction.FromId(response.TransactionId)
+                .Refund(15m)
+                .WithCurrency("USD")
+                .WithAllowDuplicates(true)
+                .Execute();
+            Assert.IsNotNull(trans);
+            Assert.AreEqual("00", trans.ResponseCode);
+        }
+
+        [TestMethod]
+        public void CreditSaleWithCOF() {
+            var response = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithCardBrandStorage(StoredCredentialInitiator.CardHolder)
+                .WithAllowDuplicates(true)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode);
+            Assert.IsNotNull(response.CardBrandTransactionId);
+
+            Transaction cofResponse = card.Charge(15m)
+                .WithCurrency("USD")
+                .WithCardBrandStorage(StoredCredentialInitiator.Merchant, response.CardBrandTransactionId)
+                .WithAllowDuplicates(true)
+                .Execute();
+            Assert.IsNotNull(cofResponse);
+            Assert.AreEqual("00", cofResponse.ResponseCode);
+        }
+
+        [TestMethod]
+        public void CreditVerifyWithCOF() {
+            Transaction response = card.Verify()
+                .WithAllowDuplicates(true)
+                .WithCardBrandStorage(StoredCredentialInitiator.CardHolder)
+                .Execute();
+            Assert.IsNotNull(response);
+            Assert.AreEqual("00", response.ResponseCode);
+            Assert.IsNotNull(response.CardBrandTransactionId);
+
+            Transaction cofResponse = card.Verify()
+                .WithAllowDuplicates(true)
+                .WithCardBrandStorage(StoredCredentialInitiator.Merchant, response.CardBrandTransactionId)
+                .Execute();
+            Assert.IsNotNull(cofResponse);
+            Assert.AreEqual("00", cofResponse.ResponseCode);
+        }
+
+        [TestMethod]
         public void CreditSaleWithConvenienceAmt() {
             var response = card.Charge(15m)
                 .WithCurrency("USD")
                 .WithAllowDuplicates(true)
-                .WithConvenienceAmt(2m)
+                .WithConvenienceAmount(2m)
                 .Execute();
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode);
@@ -129,7 +211,7 @@ namespace GlobalPayments.Api.Tests {
                 .WithCurrency("USD")
                 .WithOfflineAuthCode("12345")
                 .WithAllowDuplicates(true)
-                .WithConvenienceAmt(2m)
+                .WithConvenienceAmount(2m)
                 .Execute();
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode);
@@ -170,7 +252,7 @@ namespace GlobalPayments.Api.Tests {
                 .WithCurrency("USD")
                 .WithOfflineAuthCode("12345")
                 .WithAllowDuplicates(true)
-                .WithConvenienceAmt(2m)
+                .WithConvenienceAmount(2m)
                 .Execute();
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode);
@@ -338,16 +420,17 @@ namespace GlobalPayments.Api.Tests {
 
         [TestMethod]
         public void CreditTestWithNewCryptoURL() {
-            ServicesContainer.ConfigureService(new GatewayConfig {
-                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A",
-                ServiceUrl = "https://cert.api2-c.heartlandportico.com"
+            ServicesContainer.ConfigureService(new PorticoConfig {
+                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A"
             });
+
             card = new CreditCardData {
                 Number = "4111111111111111",
                 ExpMonth = 12,
                 ExpYear = 2025,
                 Cvn = "123"
             };
+
             var response = card.Authorize(14m)
                 .WithCurrency("USD")
                 .WithAllowDuplicates(true)
@@ -365,6 +448,16 @@ namespace GlobalPayments.Api.Tests {
 
             Assert.IsNotNull(response);
             Assert.AreEqual("00", response.ResponseCode);
+        }
+
+        [TestMethod]
+        public void CreditTokenize() {
+            ServicesContainer.ConfigureService(new PorticoConfig {
+                SecretApiKey = "skapi_cert_MTyMAQBiHVEAewvIzXVFcmUd2UcyBge_eCpaASUp0A"
+            }, "tokenize");
+
+            var token = card.Tokenize("tokenize");
+            Assert.IsNotNull(token);
         }
     }
 }
