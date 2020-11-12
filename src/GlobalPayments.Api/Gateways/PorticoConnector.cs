@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using GlobalPayments.Api.Builders;
@@ -53,8 +53,10 @@ namespace GlobalPayments.Api.Gateways {
             }
 
             #region card holder
-            var isCheck = (builder.PaymentMethod.PaymentMethodType == PaymentMethodType.ACH);
-            if (isCheck || builder.BillingAddress != null) {
+            if (builder.PaymentMethod.PaymentMethodType != PaymentMethodType.Recurring
+                && builder.PaymentMethod.PaymentMethodType != PaymentMethodType.Gift
+            ) {
+                var isCheck = (builder.PaymentMethod.PaymentMethodType == PaymentMethodType.ACH);
                 var holder = et.SubElement(block1, isCheck ? "ConsumerInfo" : "CardHolderData");
 
                 if (builder.BillingAddress != null) {
@@ -82,10 +84,16 @@ namespace GlobalPayments.Api.Gateways {
                         et.SubElement(identity, "DOBYear", check.BirthYear);
                     }
                 }
-                else {
-                    // TODO: card holder name
+                else{
+                    var card = builder.PaymentMethod as CreditCardData;
+                    if (card != null && !string.IsNullOrEmpty(card.CardHolderName)) {
+                        var names = card.CardHolderName.Split(new char[] {' '}, 2);
+                        et.SubElement(holder, "CardHolderFirstName", names[0]);
+                        et.SubElement(holder, "CardHolderLastName", names[1]);
+                    }
                 }
             }
+
             #endregion
 
             // card data
@@ -101,6 +109,13 @@ namespace GlobalPayments.Api.Gateways {
             #region ICardData
             if (builder.PaymentMethod is ICardData) {
                 var card = builder.PaymentMethod as ICardData;
+
+                //credential on file
+                if (builder.TransactionInitiator != null) {
+                    Element cardOnFileData = et.SubElement(block1, "CardOnFileData");
+                    et.SubElement(cardOnFileData, "CardOnFile", EnumConverter.GetMapping(Target.Portico, builder.TransactionInitiator));
+                    et.SubElement(cardOnFileData, "CardBrandTxnId", builder.CardBrandTransactionId);
+                }
 
                 var manualEntry = et.SubElement(cardData, hasToken ? "TokenData" : "ManualEntry");
                 et.SubElement(manualEntry, hasToken ? "TokenValue" : "CardNbr").Text(tokenValue ?? card.Number);
@@ -122,7 +137,7 @@ namespace GlobalPayments.Api.Gateways {
                         et.SubElement(secureEcommerce, "ECommerceIndicator", secureEcom.Eci);
                         et.SubElement(secureEcommerce, "XID", secureEcom.Xid);
                     }
-                }                
+                }
 
                 // recurring data
                 if (builder.TransactionModifier == TransactionModifier.Recurring) {
@@ -192,17 +207,17 @@ namespace GlobalPayments.Api.Gateways {
                 // check action
                 et.SubElement(block1, "CheckAction").Text("SALE");
 
+                var accountInfo = et.SubElement(block1, "AccountInfo");
                 // account info
                 if (string.IsNullOrEmpty(check.Token)) {
-                    var accountInfo = et.SubElement(block1, "AccountInfo");
                     et.SubElement(accountInfo, "RoutingNumber", check.RoutingNumber);
                     et.SubElement(accountInfo, "AccountNumber", check.AccountNumber);
                     et.SubElement(accountInfo, "CheckNumber", check.CheckNumber);
                     et.SubElement(accountInfo, "MICRData", check.MicrNumber);
-                    et.SubElement(accountInfo, "AccountType", check.AccountType.ToString());
                 }
                 else et.SubElement(block1, "TokenValue").Text(tokenValue);
 
+                et.SubElement(accountInfo, "AccountType", check.AccountType.ToString());
                 et.SubElement(block1, "DataEntryMode", check.EntryMode.ToString().ToUpper());
                 et.SubElement(block1, "CheckType", check.CheckType.ToString());
                 et.SubElement(block1, "SECCode", check.SecCode);
@@ -223,6 +238,12 @@ namespace GlobalPayments.Api.Gateways {
             #region RecurringPaymentMethod
             if (builder.PaymentMethod is RecurringPaymentMethod) {
                 var method = builder.PaymentMethod as RecurringPaymentMethod;
+                //credential on file
+                if (builder.TransactionInitiator != null) {
+                    Element cardOnFileData = et.SubElement(block1, "CardOnFileData");
+                    et.SubElement(cardOnFileData, "CardOnFile", EnumConverter.GetMapping(Target.Portico, builder.TransactionInitiator));
+                    et.SubElement(cardOnFileData, "CardBrandTxnId", builder.CardBrandTransactionId);
+                }
 
                 // check action
                 if (method.PaymentType == "ACH") {
@@ -316,7 +337,7 @@ namespace GlobalPayments.Api.Gateways {
 
                         var amountNode = et.SubElement(autoSub, fieldNames[index++] + "AdditionalAmtInfo");
                         et.SubElement(amountNode, "AmtType", amount.Key);
-                        et.SubElement(amountNode, "Amt", amount.Value?.ToNumericString());
+                        et.SubElement(amountNode, "Amt", amount.Value?.ToString());
                     }
                 }
 
@@ -401,6 +422,10 @@ namespace GlobalPayments.Api.Gateways {
                 // Client Txn Id
                 if (builder.TransactionType == TransactionType.Reversal) {
                     et.SubElement(root, "ClientTxnId", builder.ClientTransactionId);
+                }
+
+                if (builder.AllowDuplicates) {
+                    et.SubElement(root, "AllowDup", "Y");
                 }
 
                 // Level II Data
@@ -571,7 +596,7 @@ namespace GlobalPayments.Api.Gateways {
                 );
             }
             else {
-                result.AuthorizedAmount = root.GetValue<decimal>("AuthAmt");
+                result.AuthorizedAmount = root.GetValue<decimal>("SplitTenderCardAmt", "AuthAmt");
                 result.AvailableBalance = root.GetValue<decimal>("AvailableBalance");
                 result.AvsResponseCode = root.GetValue<string>("AVSRsltCode");
                 result.AvsResponseMessage = root.GetValue<string>("AVSRsltText");
@@ -586,6 +611,7 @@ namespace GlobalPayments.Api.Gateways {
                 result.PointsBalanceAmount = root.GetValue<decimal>("PointsBalanceAmt");
                 result.RecurringDataCode = root.GetValue<string>("RecurringDataCode");
                 result.ReferenceNumber = root.GetValue<string>("RefNbr");
+                result.CardBrandTransactionId = root.GetValue<string>("CardBrandTxnId");
                 result.ResponseCode = NormalizeResponse(root.GetValue<string>("RspCode")) ?? gatewayRspCode;
                 result.ResponseMessage = root.GetValue<string>("RspText", "RspMessage") ?? gatewayRspText;
                 result.TransactionDescriptor = root.GetValue<string>("TxnDescriptor");
@@ -597,7 +623,7 @@ namespace GlobalPayments.Api.Gateways {
                         AuthCode = root.GetValue<string>("AuthCode")
                     };
                 }
-                
+
                 // gift card create data
                 if (root.Has("CardData")) {
                     result.GiftCard = new GiftCard {
@@ -724,7 +750,7 @@ namespace GlobalPayments.Api.Gateways {
                     };
 
                     // card holder data
-                    
+
                     // lodging data
                     if (root.Has("LodgingData")) {
                         summary.LodgingData = new LodgingData {
@@ -989,6 +1015,11 @@ namespace GlobalPayments.Api.Gateways {
 
             if (paymentMethod is ITokenizable && !string.IsNullOrEmpty(((ITokenizable)paymentMethod).Token)) {
                 tokenValue = ((ITokenizable)paymentMethod).Token;
+                return true;
+            }
+
+            if (paymentMethod is eCheck && !string.IsNullOrEmpty(((eCheck)paymentMethod).Token)) {
+                tokenValue = ((eCheck)paymentMethod).Token;
                 return true;
             }
             return false;
